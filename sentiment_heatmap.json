@@ -1,24 +1,52 @@
 [
   {
-    "ticker": "JMIA",
-    "score": 0.0,
-    "bullish": 0,
+    "ticker": "SEZL",
+    "score": 0.7215999999999999,
+    "bullish": 1,
     "bearish": 0,
-    "neutral": 1,
+    "neutral": 0,
     "total_mentions": 1,
-    "total_upvotes": 0,
-    "total_comments": 13,
+    "total_upvotes": 37,
+    "total_comments": 35,
     "subreddits": 1,
     "subreddit_list": [
-      "options"
+      "wallstreetbets"
+    ]
+  },
+  {
+    "ticker": "NICE",
+    "score": -0.706,
+    "bullish": 0,
+    "bearish": 1,
+    "neutral": 0,
+    "total_mentions": 1,
+    "total_upvotes": 9,
+    "total_comments": 11,
+    "subreddits": 1,
+    "subreddit_list": [
+      "wallstreetbets"
+    ]
+  },
+  {
+    "ticker": "HOG",
+    "score": -0.706,
+    "bullish": 0,
+    "bearish": 1,
+    "neutral": 0,
+    "total_mentions": 1,
+    "total_upvotes": 9,
+    "total_comments": 11,
+    "subreddits": 1,
+    "subreddit_list": [
+      "wallstreetbets"
     ]
   },
   {
     "ticker": "CRBU",
-    "score": 0.0,
-    "bullish": 0,
+    "score": 0.7039,
+    "bullish": 1,
     "bearish": 0,
-    "neutral": 1,
+    "neutral": 0,
     "total_mentions": 1,
     "total_upvotes": 0,
     "total_comments": 13,
@@ -28,27 +56,69 @@
     ]
   },
   {
-    "ticker": "IPDN",
-    "score": 0.0,
-    "bullish": 0,
+    "ticker": "JMIA",
+    "score": 0.7039,
+    "bullish": 1,
     "bearish": 0,
-    "neutral": 1,
+    "neutral": 0,
     "total_mentions": 1,
-    "total_upvotes": 4,
+    "total_upvotes": 0,
+    "total_comments": 13,
+    "subreddits": 1,
+    "subreddit_list": [
+      "options"
+    ]
+  },
+  {
+    "ticker": "PLCE",
+    "score": 0.703,
+    "bullish": 1,
+    "bearish": 0,
+    "neutral": 0,
+    "total_mentions": 1,
+    "total_upvotes": 5,
     "total_comments": 5,
     "subreddits": 1,
     "subreddit_list": [
-      "pennystocks"
+      "shortsqueeze"
+    ]
+  },
+  {
+    "ticker": "AXP",
+    "score": 0.7021,
+    "bullish": 1,
+    "bearish": 0,
+    "neutral": 0,
+    "total_mentions": 1,
+    "total_upvotes": 3,
+    "total_comments": 4,
+    "subreddits": 1,
+    "subreddit_list": [
+      "stocks"
+    ]
+  },
+  {
+    "ticker": "ORGO",
+    "score": -0.7011999999999999,
+    "bullish": 0,
+    "bearish": 1,
+    "neutral": 0,
+    "total_mentions": 1,
+    "total_upvotes": 1,
+    "total_comments": 3,
+    "subreddits": 1,
+    "subreddit_list": [
+      "shortsqueeze"
     ]
   },
   {
     "ticker": "BURU",
-    "score": 0.0,
-    "bullish": 0,
+    "score": 0.7006,
+    "bullish": 1,
     "bearish": 0,
-    "neutral": 1,
+    "neutral": 0,
     "total_mentions": 1,
-    "total_upvotes": 4,
+    "total_upvotes": 2,
     "total_comments": 0,
     "subreddits": 1,
     "subreddit_list": [
@@ -57,86 +127,16 @@
   },
   {
     "ticker": "RUBI",
-    "score": 0.0,
-    "bullish": 0,
+    "score": 0.7006,
+    "bullish": 1,
     "bearish": 0,
-    "neutral": 1,
+    "neutral": 0,
     "total_mentions": 1,
-    "total_upvotes": 4,
+    "total_upvotes": 2,
     "total_comments": 0,
     "subreddits": 1,
     "subreddit_list": [
       "pennystocks"
-    ]
-  },
-  {
-    "ticker": "GAME",
-    "score": 0.0,
-    "bullish": 0,
-    "bearish": 0,
-    "neutral": 1,
-    "total_mentions": 1,
-    "total_upvotes": 4,
-    "total_comments": 3,
-    "subreddits": 1,
-    "subreddit_list": [
-      "pennystocks"
-    ]
-  },
-  {
-    "ticker": "FIX",
-    "score": 0.0,
-    "bullish": 0,
-    "bearish": 0,
-    "neutral": 1,
-    "total_mentions": 1,
-    "total_upvotes": 3,
-    "total_comments": 3,
-    "subreddits": 1,
-    "subreddit_list": [
-      "ValueInvesting"
-    ]
-  },
-  {
-    "ticker": "NVO",
-    "score": 0.0,
-    "bullish": 0,
-    "bearish": 0,
-    "neutral": 1,
-    "total_mentions": 1,
-    "total_upvotes": 12,
-    "total_comments": 33,
-    "subreddits": 1,
-    "subreddit_list": [
-      "ValueInvesting"
-    ]
-  },
-  {
-    "ticker": "GREE",
-    "score": 0.0,
-    "bullish": 0,
-    "bearish": 0,
-    "neutral": 1,
-    "total_mentions": 1,
-    "total_upvotes": 3,
-    "total_comments": 1,
-    "subreddits": 1,
-    "subreddit_list": [
-      "ValueInvesting"
-    ]
-  },
-  {
-    "ticker": "CHGG",
-    "score": 0.0,
-    "bullish": 0,
-    "bearish": 0,
-    "neutral": 1,
-    "total_mentions": 1,
-    "total_upvotes": 0,
-    "total_comments": 4,
-    "subreddits": 1,
-    "subreddit_list": [
-      "ValueInvesting"
     ]
   }
 ]

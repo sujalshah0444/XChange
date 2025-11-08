@@ -3,6 +3,7 @@ import prawcore
 import os
 import re
 import requests
+import time
 from datetime import datetime, timedelta
 from collections import defaultdict
 from dotenv import load_dotenv
@@ -15,7 +16,7 @@ REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID", "CmLTf2hSM1-cJqy_-X9CqQ")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "wotzRZCCrauTj2T6UUuIEW6NkWqErw")
 REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "xFinance/1.0 by u/Hot-Cow7179")
 
-# Google Gemini API credentials
+# Google Gemini API credentials (optional - only used for spam detection if enabled)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Subreddits to monitor
@@ -62,8 +63,8 @@ def extract_tickers(text):
     
     return list(tickers)
 
-def call_gemini_api(prompt, max_tokens=50):
-    """Generic function to call Gemini API"""
+def call_gemini_api(prompt, max_tokens=50, retries=2):
+    """Generic function to call Gemini API with retry logic (only used for optional spam detection)"""
     if not GEMINI_API_KEY:
         return None
     
@@ -72,57 +73,120 @@ def call_gemini_api(prompt, max_tokens=50):
         ("v1beta", "gemini-2.5-flash"),  # Fast and efficient
         ("v1beta", "gemini-2.0-flash-exp"),  # Experimental but works
         ("v1beta", "gemini-2.5-pro"),  # More powerful
-        ("v1beta", "gemini-2.5-flash-preview-05-20"),  # Preview version
     ]
     
     for api_version, model_name in endpoints_to_try:
-        try:
-            url = f"https://generativelanguage.googleapis.com/{api_version}/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-            
-            headers = {"Content-Type": "application/json"}
-            
-            data = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.3,
-                    "maxOutputTokens": max(max_tokens, 50)  # Ensure minimum 50 tokens
+        for attempt in range(retries + 1):
+            try:
+                url = f"https://generativelanguage.googleapis.com/{api_version}/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+                
+                headers = {"Content-Type": "application/json"}
+                
+                data = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {
+                        "temperature": 0.3,
+                        "maxOutputTokens": max(max_tokens, 100)  # Increased to 100 to account for "thoughts" tokens
+                    }
                 }
-            }
-            
-            response = requests.post(url, headers=headers, json=data, timeout=10)
-            
-            if response.status_code == 200:
-                result_json = response.json()
-                if 'candidates' in result_json and len(result_json['candidates']) > 0:
-                    candidate = result_json['candidates'][0]
-                    if 'content' in candidate and 'parts' in candidate['content']:
-                        if len(candidate['content']['parts']) > 0 and 'text' in candidate['content']['parts'][0]:
-                            return candidate['content']['parts'][0]['text'].strip()
-                    # Fallback: check if text is directly in content
-                    if 'text' in candidate.get('content', {}):
-                        return candidate['content']['text'].strip()
-            elif response.status_code == 404:
-                continue
-            elif response.status_code == 400:
-                error_data = response.json() if response.text else {}
-                if 'error' in error_data and 'message' in error_data['error']:
-                    if 'API key' in error_data['error']['message']:
-                        raise Exception(f"Invalid API key: {error_data['error']['message']}")
-                continue
-        except requests.exceptions.HTTPError as e:
-            if hasattr(e, 'response') and e.response is not None:
-                if e.response.status_code == 404:
+                
+                # Increased timeout and add retry on timeout
+                response = requests.post(url, headers=headers, json=data, timeout=30)
+                
+                if response.status_code == 200:
+                    result_json = response.json()
+                    if 'candidates' in result_json and len(result_json['candidates']) > 0:
+                        candidate = result_json['candidates'][0]
+                        if 'content' in candidate and 'parts' in candidate['content']:
+                            if len(candidate['content']['parts']) > 0 and 'text' in candidate['content']['parts'][0]:
+                                text = candidate['content']['parts'][0]['text'].strip()
+                                if text:  # Only return if we got actual text
+                                    return text
+                        # Fallback: check if text is directly in content
+                        if 'text' in candidate.get('content', {}):
+                            text = candidate['content']['text'].strip()
+                            if text:
+                                return text
+                    # If we got 200 but no text, try next model
                     continue
-            raise
+                elif response.status_code == 404:
+                    break  # Try next model
+                elif response.status_code == 400:
+                    error_data = response.json() if response.text else {}
+                    if 'error' in error_data and 'message' in error_data['error']:
+                        if 'API key' in error_data['error']['message']:
+                            raise Exception(f"Invalid API key: {error_data['error']['message']}")
+                    break  # Try next model
+                elif response.status_code == 429:  # Rate limit - Too Many Requests
+                    wait_time = min(2 ** attempt * 2, 60)  # Exponential backoff, max 60 seconds
+                    if attempt < retries:
+                        time.sleep(wait_time)
+                        continue
+                    # If still rate limited after retries, wait longer before trying next model
+                    time.sleep(5)
+                    break
+                elif response.status_code == 503:  # Service Unavailable
+                    wait_time = min(2 ** attempt * 3, 60)  # Longer wait for service issues
+                    if attempt < retries:
+                        time.sleep(wait_time)
+                        continue
+                    time.sleep(5)
+                    break
+            except requests.exceptions.Timeout:
+                if attempt < retries:
+                    wait_time = min(2 ** attempt, 30)  # Exponential backoff for timeouts
+                    time.sleep(wait_time)
+                    continue
+                # Try next model on timeout
+                break
+            except requests.exceptions.HTTPError as e:
+                if hasattr(e, 'response') and e.response is not None:
+                    if e.response.status_code == 404:
+                        break  # Try next model
+                    elif e.response.status_code == 429 and attempt < retries:
+                        wait_time = min(2 ** attempt * 2, 60)
+                        time.sleep(wait_time)
+                        continue
+                    elif e.response.status_code == 503 and attempt < retries:
+                        wait_time = min(2 ** attempt * 3, 60)
+                        time.sleep(wait_time)
+                        continue
+                if attempt < retries:
+                    time.sleep(2 ** attempt)
+                    continue
+                break
+            except Exception as e:
+                if attempt < retries:
+                    time.sleep(2 ** attempt)
+                    continue
+                break
     
     return None
 
-def is_spam_post(text, title):
-    """Use Gemini to detect if a post is spam"""
-    if not GEMINI_API_KEY:
-        return False  # If no API key, don't filter (assume not spam)
+def is_spam_post(text, title, use_gemini=False):
+    """Detect if a post is spam using fast heuristics, optionally using Gemini for edge cases"""
     
-    prompt = f"""Analyze if this Reddit post is spam, promotional content, or low-quality. Consider:
+    # Fast heuristic checks first (no API calls)
+    text_lower = text.lower()
+    title_lower = title.lower()
+    
+    # Check for obvious spam patterns
+    spam_patterns = [
+        len(text) < 20 and len(title) < 10,  # Very short posts
+        text.count('http://') + text.count('https://') > 3,  # Too many links
+        text.count('$') > 10,  # Excessive ticker mentions (likely spam)
+        'referral' in text_lower and 'code' in text_lower,
+        'click here' in text_lower or 'sign up now' in text_lower,
+        text.count('!') > 20,  # Excessive exclamation marks
+        len([c for c in title if c.isupper()]) > len(title) * 0.8 and len(title) > 20,  # ALL CAPS
+    ]
+    
+    if any(spam_patterns):
+        return True
+    
+    # Only use Gemini for edge cases if explicitly requested (slower but more accurate)
+    if use_gemini and GEMINI_API_KEY:
+        prompt = f"""Analyze if this Reddit post is spam, promotional content, or low-quality. Consider:
 - Repetitive or copy-paste content
 - Excessive emojis or all caps
 - Promotional links or referral codes
@@ -133,47 +197,53 @@ Title: "{title[:200]}"
 Content: "{text[:500]}"
 
 Respond with ONLY one word: "spam" or "not_spam"."""
-    
-    try:
-        result = call_gemini_api(prompt, max_tokens=10)
-        if result:
-            return "spam" in result.lower()
-    except Exception as e:
-        print(f"  ⚠️  Spam detection error: {e}")
-        return False  # If error, don't filter (assume not spam)
+        
+        try:
+            result = call_gemini_api(prompt, max_tokens=20)
+            if result:
+                return "spam" in result.lower()
+        except Exception as e:
+            # If Gemini fails, trust heuristics
+            pass
     
     return False
 
-def analyze_sentiment_with_gemini(text, ticker):
-    """Use Google Gemini to classify sentiment as bullish, bearish, or neutral"""
-    if not GEMINI_API_KEY:
-        return "neutral"
+def analyze_sentiment_keywords(text, ticker):
+    """Analyze sentiment using keyword matching (no API calls needed)"""
+    text_lower = text.lower()
     
-    prompt = f"""You are a financial sentiment analyzer. Analyze the sentiment of this text about stock ticker {ticker}.
-
-Text: "{text[:500]}"
-
-Respond with ONLY one word: "bullish", "bearish", or "neutral"."""
-
-    try:
-        result = call_gemini_api(prompt, max_tokens=20)  # Increased from 10 to 20
-        if result:
-            result_lower = result.lower().strip()
-            # Extract just the sentiment word if there's extra text
-            for word in ['bullish', 'bearish', 'neutral']:
-                if word in result_lower:
-                    return word
-            # If no match found, log it for debugging
-            print(f"  ⚠️  Unexpected response for {ticker}: '{result}'")
-        else:
-            print(f"  ⚠️  No response from Gemini for {ticker}")
+    # Bullish keywords
+    bullish_keywords = [
+        'buy', 'bullish', 'moon', 'rocket', '🚀', 'pump', 'surge', 'rally', 'gain', 'up', 
+        'rise', 'soar', 'breakout', 'break through', 'target', 'price target', 'upgrade',
+        'strong', 'growth', 'opportunity', 'undervalued', 'oversold bounce', 'support',
+        'hold', 'long', 'call', 'calls', 'yolo', 'to the moon', 'tendies', 'diamond hands',
+        'hodl', 'bull', 'green', 'profit', 'win', 'gains', 'earnings beat', 'beat expectations'
+    ]
+    
+    # Bearish keywords
+    bearish_keywords = [
+        'sell', 'bearish', 'crash', 'dump', 'drop', 'down', 'fall', 'plunge', 'tank',
+        'bear', 'short', 'puts', 'put', 'downgrade', 'overvalued', 'bubble', 'pop',
+        'resistance', 'reject', 'fail', 'loss', 'red', 'paper hands', 'stop loss',
+        'exit', 'avoid', 'warning', 'risk', 'concern', 'worried', 'fear', 'panic',
+        'earnings miss', 'miss expectations', 'disappoint', 'terrible', 'bad'
+    ]
+    
+    # Count keyword matches
+    bullish_count = sum(1 for keyword in bullish_keywords if keyword in text_lower)
+    bearish_count = sum(1 for keyword in bearish_keywords if keyword in text_lower)
+    
+    # Determine sentiment based on keyword counts
+    if bullish_count > bearish_count and bullish_count > 0:
+        return "bullish"
+    elif bearish_count > bullish_count and bearish_count > 0:
+        return "bearish"
+    else:
         return "neutral"
-    except Exception as e:
-        print(f"  ⚠️  Gemini error for {ticker}: {e}")
-        return "neutral"
 
-def fetch_posts_from_subreddit(subreddit_name, limit=20, filter_spam=True, verbose=True):
-    """Fetch recent posts from a subreddit with spam filtering"""
+def fetch_posts_from_subreddit(subreddit_name, limit=20, filter_spam=True, use_gemini_spam=False, verbose=True):
+    """Fetch recent posts from a subreddit with fast spam filtering"""
     posts_data = []
     spam_count = 0
     try:
@@ -185,8 +255,8 @@ def fetch_posts_from_subreddit(subreddit_name, limit=20, filter_spam=True, verbo
             # Get post text (title + selftext)
             text = f"{post.title} {post.selftext}"
             
-            # Filter spam if enabled
-            if filter_spam and is_spam_post(post.selftext, post.title):
+            # Filter spam if enabled (fast heuristics by default, Gemini only if requested)
+            if filter_spam and is_spam_post(post.selftext, post.title, use_gemini=use_gemini_spam):
                 spam_count += 1
                 continue
             
@@ -238,10 +308,10 @@ def aggregate_sentiment(posts_data, verbose=True):
             ticker_data['subreddits'].add(post['subreddit'])
             ticker_data['posts'].append(post)
             
-            # Analyze sentiment
+            # Analyze sentiment using keyword matching (fast, no API calls)
             if verbose:
                 print(f"  [{i}/{len(posts_data)}] Analyzing {ticker}...", end="\r")
-            sentiment = analyze_sentiment_with_gemini(post['text'], ticker)
+            sentiment = analyze_sentiment_keywords(post['text'], ticker)
             ticker_data[sentiment] += 1
     
     if verbose:
@@ -337,10 +407,10 @@ def main():
     print("="*80)
     print(f"\n📡 Monitoring {len(SUBREDDITS)} subreddits...\n")
     
-    # Fetch posts from all subreddits
+    # Fetch posts from all subreddits (spam filtering enabled but using fast heuristics only)
     all_posts = []
     for subreddit in SUBREDDITS:
-        posts = fetch_posts_from_subreddit(subreddit, limit=15)
+        posts = fetch_posts_from_subreddit(subreddit, limit=15, filter_spam=True, use_gemini_spam=False, verbose=True)
         all_posts.extend(posts)
         print(f"  ✅ Found {len(posts)} posts with tickers")
     
@@ -386,10 +456,10 @@ def get_stock_sentiment(ticker_symbol, limit_per_subreddit=20):
     """
     ticker_symbol = ticker_symbol.upper()
     
-    # Fetch posts mentioning this ticker
+    # Fetch posts mentioning this ticker (fast spam filtering, no Gemini)
     all_posts = []
     for subreddit in SUBREDDITS:
-        posts = fetch_posts_from_subreddit(subreddit, limit=limit_per_subreddit, filter_spam=True, verbose=False)
+        posts = fetch_posts_from_subreddit(subreddit, limit=limit_per_subreddit, filter_spam=True, use_gemini_spam=False, verbose=False)
         # Filter posts that mention this specific ticker
         for post in posts:
             if ticker_symbol in post['tickers']:
@@ -480,10 +550,10 @@ def get_multiple_stocks_sentiment(ticker_symbols, limit_per_subreddit=15):
     """
     ticker_symbols = [t.upper() for t in ticker_symbols]
     
-    # Fetch all posts
+    # Fetch all posts (fast spam filtering, no Gemini)
     all_posts = []
     for subreddit in SUBREDDITS:
-        posts = fetch_posts_from_subreddit(subreddit, limit=limit_per_subreddit, filter_spam=True, verbose=False)
+        posts = fetch_posts_from_subreddit(subreddit, limit=limit_per_subreddit, filter_spam=True, use_gemini_spam=False, verbose=False)
         all_posts.extend(posts)
     
     # Filter posts that mention any of our target tickers
